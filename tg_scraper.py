@@ -8,6 +8,11 @@ from bs4 import BeautifulSoup
 
 
 class TgScraper:
+    """Scraping users from vas3k.club engine, find telegram links in bio and info and find telegram channels.
+
+    SITE_URL and TOKEN determine in .env file.
+    """
+
     load_dotenv()
     SITE_URL = os.environ.get("SITE_URL")
     TOKEN = os.environ.get("TOKEN")
@@ -17,6 +22,11 @@ class TgScraper:
         self.users = []
 
     def __login(self):
+        """Login method.
+
+        Returns:
+            bool: True if logged in successfully, False if not
+        """
         payload = {"email_or_login": self.TOKEN}
         self._session.post(self.SITE_URL + "/auth/email/", data=payload)
 
@@ -31,6 +41,14 @@ class TgScraper:
                 return False
 
     def __find_max_page(self, html):
+        """Find max pagination page number.
+
+        Args:
+            html (str): html page with pagination
+
+        Returns:
+            int: max page number
+        """
         soup = BeautifulSoup(html, "html.parser")
         max_page = 0
         for a in soup.find_all("a", class_="paginator-page"):
@@ -44,11 +62,27 @@ class TgScraper:
         return max_page
 
     def __find_tg(self, text):
+        """Find telegram links starts with @ and t.me/
+
+        Args:
+            text (str): where need find telegram links
+
+        Returns:
+            list[str]: list of telegram user or channel names
+        """
         at = re.compile(r"@([^\s:]+)")
         link = re.compile(r"t.me\/([^\s:]+)")
         return at.findall(text) + link.findall(text)
 
     def __tg_from_intro(self, user):
+        """Find user intro and find telegram links
+
+        Args:
+            user (srt): username in club
+
+        Returns:
+            list[srt]: list of telegram user or channel names
+        """
         s = self._session.get(self.SITE_URL + f"/user/{user}")
         soup = BeautifulSoup(s.text, "html.parser")
         intro = soup.find("div", class_="profile-intro-text")
@@ -59,6 +93,14 @@ class TgScraper:
             return []
 
     def __check_tg(self, tgs):
+        """Check if telegram name is channel
+
+        Args:
+            tgs (list[str]): telegram names
+
+        Returns:
+            list[srt]: telegram channel names
+        """
         channels = []
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
@@ -73,6 +115,17 @@ class TgScraper:
         return channels
 
     def __get_users_from_page(self, html):
+        """Get all users from html page and get user data:
+
+        fullname
+        nickname
+        bio
+        tg (telegram links)
+        channels (telegram channels)
+
+        Args:
+            html (str): html page
+        """
         soup = BeautifulSoup(html, "html.parser")
         for u in soup.find_all("article", class_="profile-card"):
             try:
@@ -88,7 +141,7 @@ class TgScraper:
                 )
                 logger.debug(f"user {user['nickname']}")
                 user["bio"] = ""
-                user["tg"] = ""
+                user["tg"] = []
                 bio = u.find("div", class_="profile-user-bio")
                 if bio:
                     user["bio"] = bio.get_text()
@@ -99,8 +152,7 @@ class TgScraper:
                 tg_from_intro = self.__tg_from_intro(user["nickname"])
                 if tg_from_intro:
                     user["tg"] += tg_from_intro
-                    if len(user["tg"]) >= 2:
-                        user["tg"] = list(set(user["tg"]))
+                    user["tg"] = list(set(user["tg"]))
 
                 user["channels"] = ""
                 if user["tg"]:
@@ -113,6 +165,11 @@ class TgScraper:
                 logger.error(e)
 
     def get_users(self):
+        """Main method, that login, going to paginated page, find telegram links and telegram channel.
+
+        Returns:
+            list[dict]: users with keys: fullname, nickname, bio, tg (telegram links), channels (telegram channels)
+        """
         if self.__login():
             people = self._session.get(self.SITE_URL + "/people/")
             max_page = self.__find_max_page(people.text)
@@ -125,6 +182,7 @@ class TgScraper:
 
 
 if __name__ == "__main__":
+    logger.add("logs.log")
     tg = TgScraper()
     users = tg.get_users()
     if users:
