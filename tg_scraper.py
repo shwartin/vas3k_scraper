@@ -19,7 +19,32 @@ class TgScraper:
 
     def __init__(self) -> None:
         self._session = requests.Session()
+        self._filename = "users.json"
+        self._file = self.__open_file(self._filename)
         self.users = []
+
+    def __del__(self):
+        self._file.seek(self._file.tell() - 2, os.SEEK_SET)
+        self._file.truncate()
+        self._file.write("\n]")
+        self._file.close()
+
+    def __open_file(self, filename):
+        if os.path.exists(filename):
+            os.remove(filename)
+            logger.debug(f"{filename} file removed")
+        f = open("users.json", "a", encoding="utf-8")
+        f.write("[\n")
+        return f
+
+    def __to_file(self, user):
+        """Write user info to file
+
+        Args:
+            user (dict): users data
+        """
+        json.dump(user, self._file, ensure_ascii=False)
+        self._file.write(",\n")
 
     def __login(self):
         """Login method.
@@ -161,6 +186,7 @@ class TgScraper:
                         user["channels"] = channels
 
                 self.users.append(user)
+                self.__to_file(user)
             except Exception as e:
                 logger.error(e)
 
@@ -173,6 +199,7 @@ class TgScraper:
         if self.__login():
             people = self._session.get(self.SITE_URL + "/people/")
             max_page = self.__find_max_page(people.text)
+            max_page = 1
             for num_page in range(1, max_page + 1):
                 logger.debug(f"page {num_page} from {max_page}")
                 page = self._session.get(self.SITE_URL + f"/people/?page={num_page}")
@@ -185,6 +212,3 @@ if __name__ == "__main__":
     logger.add("logs.log")
     tg = TgScraper()
     users = tg.get_users()
-    if users:
-        with open("users.json", "w", encoding="utf-8") as f:
-            json.dump(users, f, ensure_ascii=False)
