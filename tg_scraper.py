@@ -142,6 +142,13 @@ class TgScraper:
     def __get_fullname(self, user):
         return user.find("span", class_="profile-user-fullname").get_text()
 
+    def __get_nickname(self, user):
+        return (
+            user.find("span", class_="profile-user-nickname")
+            .get_text()
+            .replace("@", "")
+        )
+
     def __get_users_from_page(self, html):
         """Get all users from html page and get user data:
 
@@ -160,11 +167,7 @@ class TgScraper:
                 user = dict()
 
                 user["fullname"] = self.__get_fullname(u)
-                user["nickname"] = (
-                    u.find("span", class_="profile-user-nickname")
-                    .get_text()
-                    .replace("@", "")
-                )
+                user["nickname"] = self.__get_nickname(u)
                 logger.debug(f"user {user['nickname']}")
                 user["bio"] = ""
                 user["tg"] = []
