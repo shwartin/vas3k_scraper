@@ -135,7 +135,7 @@ class TgScraper:
         Returns:
             list[srt]: telegram channel names
         """
-        links = {"channels": [], "chats": [], "personal": []}
+        links = {"all": tgs, "channels": [], "chats": [], "personal": []}
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
@@ -168,7 +168,8 @@ class TgScraper:
         tg_from_bio = self.__tg_from_bio(user)
         tg_from_intro = self.__tg_from_intro(user)
         tg = tg_from_bio + tg_from_intro
-        return self.__check_tg(set(tg))
+        unique_tg = list(set(tg))
+        return self.__check_tg(unique_tg)
 
     def __get_users_from_page(self, html):
         """Get all users from html page and get user data:
