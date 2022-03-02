@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 
 class TgScraper:
-    """Scraping users from vas3k.club engine, find telegram links in bio and info and find telegram channels.
+    """Scraping users from vas3k.club engine, find telegram links in bio and info and separate ids by type.
 
     SITE_URL and TOKEN determine in .env file.
     """
@@ -24,16 +24,26 @@ class TgScraper:
         self.users = []
 
     def __del__(self):
+        # delete last comma
         self._file.seek(self._file.tell() - 2, os.SEEK_SET)
         self._file.truncate()
+
         self._file.write("\n]")
         self._file.close()
 
     def __open_file(self, filename):
+        """Open a file for recording users.
+
+        Args:
+            filename (str): file name
+
+        Returns:
+            file object: opened file
+        """
         if os.path.exists(filename):
             os.remove(filename)
             logger.debug(f"{filename} file removed")
-        f = open("users.json", "a", encoding="utf-8")
+        f = open(filename, "a", encoding="utf-8")
         f.write("[\n")
         return f
 
@@ -114,7 +124,7 @@ class TgScraper:
             user (srt): username in club
 
         Returns:
-            list[srt]: list of telegram user or channel names
+            list[str]: list of telegram user or channel names
         """
         nickname = self.__get_nickname(user)
         s = self._session.get(self.SITE_URL + f"/user/{nickname}")
@@ -126,14 +136,14 @@ class TgScraper:
         else:
             return []
 
-    def __check_tg(self, tgs):
-        """Check if telegram name is channel
+    def __separate_tg(self, tgs):
+        """Separate telegram ids by type
 
         Args:
-            tgs (list[str]): telegram names
+            tgs (list[str]): telegram ids
 
         Returns:
-            list[srt]: telegram channel names
+            dict: telegram separate ids
         """
         links = {"all": tgs, "channels": [], "chats": [], "personal": []}
 
@@ -169,16 +179,14 @@ class TgScraper:
         tg_from_intro = self.__tg_from_intro(user)
         tg = tg_from_bio + tg_from_intro
         unique_tg = list(set(tg))
-        return self.__check_tg(unique_tg)
+        return self.__separate_tg(unique_tg)
 
     def __get_users_from_page(self, html):
         """Get all users from html page and get user data:
 
         fullname
         nickname
-        bio
         tg (telegram links)
-        channels (telegram channels)
 
         Args:
             html (str): html page
@@ -201,7 +209,7 @@ class TgScraper:
         """Main method, that login, going to paginated page, find telegram links and telegram channel.
 
         Returns:
-            list[dict]: users with keys: fullname, nickname, bio, tg (telegram links), channels (telegram channels)
+            list[dict]: users with keys: fullname, nickname, tg (telegram links)
         """
         if self.__login():
             people = self._session.get(self.SITE_URL + "/people/")
