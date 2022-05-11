@@ -20,6 +20,11 @@ class User(pydantic.BaseModel):
     telegram: Telegram = []
 
 
+class UserList(pydantic.BaseModel):
+    # https://stackoverflow.com/a/58636711/12843933
+    __root__: list[User] = []
+
+
 # todo
 # finished writer
 # test
@@ -139,12 +144,12 @@ class Scraper:
         unique_tg = list(set(tg))
         return self._separator(unique_tg)
 
-    def _get_users(self, html: str) -> None:
+    def _get_users(self, html: str) -> UserList:
         """Get all users from html page and get user data:"""
-        page_users = []
+        page_users = UserList()
         soup = BeautifulSoup(html, "html.parser")
         for u in soup.find_all("article", class_="profile-card"):
-            page_users.append(
+            page_users.__root__.append(
                 User(
                     fullname=self._get_fullname(u),
                     nickname=self._get_nickname(u),
@@ -154,9 +159,9 @@ class Scraper:
 
         return page_users
 
-    def _paginator(self):
+    def _paginator(self) -> UserList:
         """Main method, that login, going to paginated page, find telegram links."""
-        users = []
+        users = UserList()
         if self._login():
             people = self.session.get(f"{self.site_url}/people/")
             # max_page = self._find_max_page(people.text)
@@ -164,7 +169,7 @@ class Scraper:
             for num_page in range(1, max_page + 1):
                 logger.debug(f"page {num_page} from {max_page}")
                 page = self.session.get(f"{self.site_url}/people/?page={num_page}")
-                users += self._get_users(page.text)
+                users.__root__ += self._get_users(page.text).__root__
 
         return users
 
@@ -175,3 +180,4 @@ if __name__ == "__main__":
     logger.add("logs.log")
     s = Scraper("https://4aff.club", login_token)
     logger.debug(s.users)
+    logger.debug(s.users.json())
