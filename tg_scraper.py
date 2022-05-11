@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import pydantic
 import requests
 from loguru import logger
@@ -115,8 +116,8 @@ class Scraper:
                             personal.append(tg)
                         else:
                             chats.append(tg)
-
-        return Telegram(all=tgs, channels=channels, chats=chats, personal=personal)
+        if channels or chats or personal:
+            return Telegram(all=tgs, channels=channels, chats=chats, personal=personal)
 
     @staticmethod
     def _finder(text: str) -> list[str]:
@@ -142,22 +143,24 @@ class Scraper:
         tg_from_intro = self._tg_from_intro(user)
         tg = tg_from_bio + tg_from_intro
         unique_tg = list(set(tg))
-        return self._separator(unique_tg)
+        if telegram := self._separator(unique_tg):
+            return telegram
 
     def _get_users(self, html: str) -> UserList:
         """Get all users from html page and get user data:"""
         page_users = UserList()
         soup = BeautifulSoup(html, "html.parser")
         for u in soup.find_all("article", class_="profile-card"):
-            page_users.__root__.append(
-                User(
-                    fullname=self._get_fullname(u),
-                    nickname=self._get_nickname(u),
-                    telegram=self._get_tg(u),
+            if telegram := self._get_tg(u):
+                page_users.__root__.append(
+                    User(
+                        fullname=self._get_fullname(u),
+                        nickname=self._get_nickname(u),
+                        telegram=telegram,
+                    )
                 )
-            )
-
-        return page_users
+        if page_users.__root__:
+            return page_users
 
     def _paginator(self) -> UserList:
         """Main method, that login, going to paginated page, find telegram links."""
@@ -180,4 +183,6 @@ if __name__ == "__main__":
     logger.add("logs.log")
     s = Scraper("https://4aff.club", login_token)
     logger.debug(s.users)
-    logger.debug(s.users.json())
+    with open("4aff.json", mode="w", encoding="utf-8") as f:
+        f.write(s.users.json(ensure_ascii=False))
+    # logger.debug(s.users.json())
