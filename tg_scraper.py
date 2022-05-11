@@ -21,7 +21,6 @@ class User(pydantic.BaseModel):
 
 
 # todo
-# close requests session
 # finished writer
 # test
 
@@ -39,6 +38,9 @@ class Scraper:
         self.web_tg_url = "https://t.me/s"
         self.session = requests.Session()
         self.users = self._paginator()
+
+    def __del__(self):
+        self.session.close()
 
     def _login(self) -> bool:
         payload = {"email_or_login": self.token}
@@ -96,18 +98,18 @@ class Scraper:
         chats = []
         personal = []
         for tg in tgs:
-            r = requests.get(f"{self.web_tg_url}/{tg}", headers=self.headers)
-            if not r.status_code == 200:
-                continue
-            if all(pattern in r.url for pattern in ["/s/", tg]):
-                channels.append(tg)
-            elif tg in r.url:
-                soup = BeautifulSoup(r.text, "html.parser")
-                if desc := soup.find("div", class_="tgme_page_extra"):
-                    if "@" in desc.get_text(strip=True):
-                        personal.append(tg)
-                    else:
-                        chats.append(tg)
+            with requests.get(f"{self.web_tg_url}/{tg}", headers=self.headers) as r:
+                if not r.status_code == 200:
+                    continue
+                if all(pattern in r.url for pattern in ["/s/", tg]):
+                    channels.append(tg)
+                elif tg in r.url:
+                    soup = BeautifulSoup(r.text, "html.parser")
+                    if desc := soup.find("div", class_="tgme_page_extra"):
+                        if "@" in desc.get_text(strip=True):
+                            personal.append(tg)
+                        else:
+                            chats.append(tg)
 
         return Telegram(all=tgs, channels=channels, chats=chats, personal=personal)
 
