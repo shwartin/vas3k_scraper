@@ -27,9 +27,9 @@ class UserList(pydantic.BaseModel):
 
 
 # todo
-# finished writer
 # test
-
+# add console parameters site and token
+# change readme
 
 class Scraper:
     """Scraping users from vas3k.club engine, find telegram links in bio and info and separate ids by type."""
@@ -151,24 +151,27 @@ class Scraper:
         page_users = UserList()
         soup = BeautifulSoup(html, "html.parser")
         for u in soup.find_all("article", class_="profile-card"):
-            if telegram := self._get_tg(u):
-                page_users.__root__.append(
-                    User(
-                        fullname=self._get_fullname(u),
-                        nickname=self._get_nickname(u),
-                        telegram=telegram,
+            try:
+                if telegram := self._get_tg(u):
+                    page_users.__root__.append(
+                        User(
+                            fullname=self._get_fullname(u),
+                            nickname=self._get_nickname(u),
+                            telegram=telegram,
+                        )
                     )
-                )
-        if page_users.__root__:
-            return page_users
+            except requests.exceptions.ProxyError as e:
+                logger.error(f"error: {e}, user: {u}")
+        # if page_users.__root__:
+        return page_users
 
     def _paginator(self) -> UserList:
         """Main method, that login, going to paginated page, find telegram links."""
         users = UserList()
         if self._login():
             people = self.session.get(f"{self.site_url}/people/")
-            # max_page = self._find_max_page(people.text)
-            max_page = 1
+            max_page = self._find_max_page(people.text)
+            # max_page = 1
             for num_page in range(1, max_page + 1):
                 logger.debug(f"page {num_page} from {max_page}")
                 page = self.session.get(f"{self.site_url}/people/?page={num_page}")
@@ -179,10 +182,16 @@ class Scraper:
 
 if __name__ == "__main__":
     load_dotenv()
-    login_token = os.environ.get("TOKEN")
     logger.add("logs.log")
-    s = Scraper("https://4aff.club", login_token)
-    logger.debug(s.users)
-    with open("4aff.json", mode="w", encoding="utf-8") as f:
+    # login_token = os.environ.get("TOKEN")
+    # s = Scraper("https://4aff.club", login_token)
+    # with open("4aff.json", mode="w", encoding="utf-8") as f:
+    
+    # login_token = os.environ.get("RA_TOKEN")
+    #s = Scraper("https://rationalanswer.club", login_token)
+    #with open("ra.json", mode="w", encoding="utf-8") as f:
+    login_token = os.environ.get("VAS3K_TOKEN")
+    s = Scraper("https://vas3k.club", login_token)
+    with open("vas3k.json", mode="w", encoding="utf-8") as f:
         f.write(s.users.json(ensure_ascii=False))
     # logger.debug(s.users.json())
