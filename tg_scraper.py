@@ -1,197 +1,172 @@
-import os
 import re
-import json
-import pydantic
+import click
 import requests
 from loguru import logger
+from requests import session
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
+from pydantic import AnyHttpUrl, BaseModel
 
 
-class Telegram(pydantic.BaseModel):
-    # all: list[str] = []  # debug
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"}
+MAIN_TEXT = "Главная"
+WEB_TG_URL = "https://t.me/s"
+
+
+class Telegram(BaseModel):
     chats: list[str] = []
     channels: list[str] = []
     personal: list[str] = []
 
 
-class User(pydantic.BaseModel):
+class User(BaseModel):
     fullname: str
     nickname: str
     telegram: Telegram = []
 
 
-class UserList(pydantic.BaseModel):
+class UserList(BaseModel):
     # https://stackoverflow.com/a/58636711/12843933
     __root__: list[User] = []
 
 
-# todo
-# test
-# add console parameters site and token
-# change readme
+def login(s: session, url: AnyHttpUrl, token: str) -> bool:
+    """Login to club"""
+    payload = {"email_or_login": token}
+    s.post(f"{url}/auth/email/", data=payload)
 
-class Scraper:
-    """Scraping users from vas3k.club engine, find telegram links in bio and info and separate ids by type."""
+    main = s.get(url)
+    if not main.status_code == 200:
+        logger.error("Problem with login")
+        return False
+    soup = BeautifulSoup(main.text, "html.parser")
+    if not soup.body.findAll(text=re.compile(MAIN_TEXT)):
+        logger.info("failed to log in")
+        return False
 
-    def __init__(self, site_url: pydantic.AnyHttpUrl, token: str) -> None:
-        self.site_url = site_url
-        self.token = token
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
-        }
-        self.right_login_text = "Главная"
-        self.web_tg_url = "https://t.me/s"
-        self.session = requests.Session()
-        self.users = self._paginator()
+    logger.info("logged in successfully")
+    return True
 
-    def __del__(self):
-        self.session.close()
+def find_max_page(html: str) -> int:
+    """Find max pagination page number."""
+    soup = BeautifulSoup(html, "html.parser")
+    max_page = 0
+    for a in soup.find_all("a", class_="paginator-page")[:-1]:
+        try:
+            number = int(a.get_text(strip=True))
+            if number > max_page:
+                max_page = number
+        except Exception as e:
+            logger.error(f"error: {e}. Finding max page error")
 
-    def _login(self) -> bool:
-        payload = {"email_or_login": self.token}
-        self.session.post(f"{self.site_url}/auth/email/", data=payload)
+    return max_page
 
-        main = self.session.get(self.site_url)
-        if main.status_code == 200:
-            soup = BeautifulSoup(main.text, "html.parser")
-            if soup.body.findAll(text=re.compile(self.right_login_text)):
-                logger.info("logged in successfully")
-                return True
-            else:
-                logger.info("failed to log in")
-                return False
+def tg_from_bio(user: BeautifulSoup) -> list[str]:
+    """Find telegram link in bio"""
+    bio = user.find("div", class_="profile-user-bio")
+    if bio:
+        text = bio.encode_contents().decode()
+        return finder(text)
+    else:
+        return []
 
-    @staticmethod
-    def _find_max_page(html: str) -> int:
-        """Find max pagination page number."""
-        soup = BeautifulSoup(html, "html.parser")
-        max_page = 0
-        for a in soup.find_all("a", class_="paginator-page"):
-            try:
-                number = int(a.get_text(strip=True))
-                if number > max_page:
-                    max_page = number
-            except:
-                pass
+def tg_from_intro(s: session, url: AnyHttpUrl, user: BeautifulSoup) -> list[str]:
+    """Find user intro and find telegram links"""
+    nickname = get_nickname(user)
+    s = s.get(f"{url}/user/{nickname}")
+    soup = BeautifulSoup(s.text, "html.parser")
+    intro = soup.find("div", class_="profile-intro-text")
+    if not intro:
+        return []
+    text = intro.encode_contents().decode()
+    return finder(text)
 
-        return max_page
+def separator(tgs: list) -> Telegram:
+    """Separate telegram ids by type"""
+    channels = []
+    chats = []
+    personal = []
+    for tg in tgs:
+        with requests.get(f"{WEB_TG_URL}/{tg}", headers=HEADERS) as r:
+            if not r.status_code == 200:
+                continue
+            if all(pattern in r.url for pattern in ["/s/", tg]):
+                channels.append(tg)
+            elif tg in r.url:
+                soup = BeautifulSoup(r.text, "html.parser")
+                if desc := soup.find("div", class_="tgme_page_extra"):
+                    if "@" in desc.get_text(strip=True):
+                        personal.append(tg)
+                    else:
+                        chats.append(tg)
+    
+    if any([channels, chats, personal]):
+        return Telegram(channels=channels, chats=chats, personal=personal)
 
-    def _tg_from_bio(self, user: BeautifulSoup) -> list[str]:
-        bio = user.find("div", class_="profile-user-bio")
-        if bio:
-            text = bio.encode_contents().decode()
-            return self._finder(text)
-        else:
-            return []
+def finder(text: str) -> list[str]:
+    """Find telegram links starts with @ and t.me/"""
+    at = re.compile(r"@([\w\-\.]+[\w])")
+    link = re.compile(r"t.me\/([\w\-\.]+[\w])")
+    return at.findall(text) + link.findall(text)
 
-    def _tg_from_intro(self, user: str) -> list[str]:
-        """Find user intro and find telegram links"""
-        nickname = self._get_nickname(user)
-        s = self.session.get(f"{self.site_url}/user/{nickname}")
-        soup = BeautifulSoup(s.text, "html.parser")
-        intro = soup.find("div", class_="profile-intro-text")
-        if intro:
-            # text = intro.get_text()
-            text = intro.encode_contents().decode()
-            return self._finder(text)
-        else:
-            return []
+def get_fullname(user: BeautifulSoup) -> str:
+    return user.find("span", class_="profile-user-fullname").get_text()
 
-    def _separator(self, tgs) -> Telegram:
-        """Separate telegram ids by type"""
-        channels = []
-        chats = []
-        personal = []
-        for tg in tgs:
-            with requests.get(f"{self.web_tg_url}/{tg}", headers=self.headers) as r:
-                if not r.status_code == 200:
-                    continue
-                if all(pattern in r.url for pattern in ["/s/", tg]):
-                    channels.append(tg)
-                elif tg in r.url:
-                    soup = BeautifulSoup(r.text, "html.parser")
-                    if desc := soup.find("div", class_="tgme_page_extra"):
-                        if "@" in desc.get_text(strip=True):
-                            personal.append(tg)
-                        else:
-                            chats.append(tg)
-        if channels or chats or personal:
-            return Telegram(all=tgs, channels=channels, chats=chats, personal=personal)
+def get_nickname(user: BeautifulSoup) -> str:
+    return (
+        user.find("span", class_="profile-user-nickname")
+        .get_text()
+        .replace("@", "")
+    )
 
-    @staticmethod
-    def _finder(text: str) -> list[str]:
-        """Find telegram links starts with @ and t.me/"""
-        at = re.compile(r"@([\w\-\.]+[\w])")
-        link = re.compile(r"t.me\/([\w\-\.]+[\w])")
-        return at.findall(text) + link.findall(text)
+def get_tg(s: session, url: AnyHttpUrl, user: BeautifulSoup) -> Telegram:
+    tg_bio = tg_from_bio(user)
+    tg_intro = tg_from_intro(s, url, user)
+    tg = tg_bio + tg_intro
+    unique_tg = list(set(tg))
+    if telegram := separator(unique_tg):
+        return telegram
 
-    @staticmethod
-    def _get_fullname(user: BeautifulSoup) -> str:
-        return user.find("span", class_="profile-user-fullname").get_text()
-
-    @staticmethod
-    def _get_nickname(user: BeautifulSoup) -> str:
-        return (
-            user.find("span", class_="profile-user-nickname")
-            .get_text()
-            .replace("@", "")
-        )
-
-    def _get_tg(self, user) -> Telegram:
-        tg_from_bio = self._tg_from_bio(user)
-        tg_from_intro = self._tg_from_intro(user)
-        tg = tg_from_bio + tg_from_intro
-        unique_tg = list(set(tg))
-        if telegram := self._separator(unique_tg):
-            return telegram
-
-    def _get_users(self, html: str) -> UserList:
-        """Get all users from html page and get user data:"""
-        page_users = UserList()
-        soup = BeautifulSoup(html, "html.parser")
-        for u in soup.find_all("article", class_="profile-card"):
-            try:
-                if telegram := self._get_tg(u):
-                    page_users.__root__.append(
-                        User(
-                            fullname=self._get_fullname(u),
-                            nickname=self._get_nickname(u),
-                            telegram=telegram,
-                        )
+def get_users(s: session, url: AnyHttpUrl, html: str) -> UserList:
+    """Get all users from html page"""
+    page_users = UserList()
+    soup = BeautifulSoup(html, "html.parser")
+    for u in soup.find_all("article", class_="profile-card"):
+        try:
+            if telegram := get_tg(s, url, u):
+                page_users.__root__.append(
+                    User(
+                        fullname=get_fullname(u),
+                        nickname=get_nickname(u),
+                        telegram=telegram,
                     )
-            except requests.exceptions.ProxyError as e:
-                logger.error(f"error: {e}, user: {u}")
-        # if page_users.__root__:
-        return page_users
+                )
+        except requests.exceptions.ProxyError as e:
+            logger.error(f"error: {e}, user: {u}")
+    return page_users
 
-    def _paginator(self) -> UserList:
-        """Main method, that login, going to paginated page, find telegram links."""
-        users = UserList()
-        if self._login():
-            people = self.session.get(f"{self.site_url}/people/")
-            max_page = self._find_max_page(people.text)
-            # max_page = 1
-            for num_page in range(1, max_page + 1):
-                logger.debug(f"page {num_page} from {max_page}")
-                page = self.session.get(f"{self.site_url}/people/?page={num_page}")
-                users.__root__ += self._get_users(page.text).__root__
 
-        return users
+@click.command()
+@click.option("--url", help="Site", required=True)
+@click.option("--token", help="Login token", required=True)
+@click.argument("file", type=click.File("w"), required=True)
+def paginator(url: AnyHttpUrl, token: str, file: str) -> None:
+    """Scraping club users and fing all telegram links."""
+    users = UserList()
+    with requests.session() as s:
+        s.headers = HEADERS
+        if login(s, url, token):
+            people = s.get(f"{url}/people/")
+            max_page = find_max_page(people.text)
+            with click.progressbar(range(1, max_page + 1), label="Scraping users") as bar:
+                for num_page in bar:
+                    #logger.debug(f"page {num_page} from {max_page}")
+                    page = s.get(f"{url}/people/?page={num_page}")
+                    page_users = get_users(s, url, page.text)
+                    users.__root__ += page_users.__root__
+        
+    file.write(users.json(ensure_ascii=False))
 
 
 if __name__ == "__main__":
-    load_dotenv()
     logger.add("logs.log")
-    # login_token = os.environ.get("TOKEN")
-    # s = Scraper("https://4aff.club", login_token)
-    # with open("4aff.json", mode="w", encoding="utf-8") as f:
-    
-    # login_token = os.environ.get("RA_TOKEN")
-    #s = Scraper("https://rationalanswer.club", login_token)
-    #with open("ra.json", mode="w", encoding="utf-8") as f:
-    login_token = os.environ.get("VAS3K_TOKEN")
-    s = Scraper("https://vas3k.club", login_token)
-    with open("vas3k.json", mode="w", encoding="utf-8") as f:
-        f.write(s.users.json(ensure_ascii=False))
-    # logger.debug(s.users.json())
+    paginator()
