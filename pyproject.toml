@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "tg_scraper"
+name = "vas3k_scraper"
 version = "0.1.1"
 description = "Telegram links scraper from vask.club engine"
 authors = ["Shwartin https://github.com/shwartin"]
