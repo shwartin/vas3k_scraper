@@ -105,13 +105,15 @@ def convert_str_to_number(x: str) -> int:
 
 
 def get_channel_info(soup: BeautifulSoup) -> Channel:
-    title = soup.find(class_="tgme_channel_info_header_title").get_text()
-    description = soup.find("div", class_="tgme_channel_info_description").get_text()
-    subscribers = (
-        soup.find("div", class_="tgme_channel_info_counter")
-        .find("span", class_="counter_value")
-        .get_text(strip=True)
-    )
+    title, description, subscribers = "", "", "0"
+    if soup_title := soup.find(class_="tgme_channel_info_header_title"):
+        title = soup_title.get_text()
+    if soup_description := soup.find("div", class_="tgme_channel_info_description"):
+        description = soup_description.get_text()
+    if soup_subscribers := soup.find("div", class_="tgme_channel_info_counter").find(
+        "span", class_="counter_value"
+    ):
+        subscribers = soup_subscribers.get_text(strip=True)
     subscribers = convert_str_to_number(subscribers)
     return title, description, subscribers
 
@@ -191,8 +193,12 @@ def get_users(s: session, url: AnyHttpUrl, html: str) -> UserList:
 
 
 @click.command()
-@click.option("--url", help="Site", required=True)
-@click.option("--token", help="Login token", required=True)
+@click.option("--url", help="Club url, for example 'https://vas3k.club'", required=True)
+@click.option(
+    "--token",
+    help="Login token, you can find it in your profile 'https://vask.club/user/{login}/edit/account/'",
+    required=True,
+)
 @click.argument("file", type=click.File("w"), required=True)
 def paginator(url: AnyHttpUrl, token: str, file: str) -> None:
     """Scraping club users and fing all telegram links."""
