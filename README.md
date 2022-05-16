@@ -1,30 +1,80 @@
-# Парсер телеграм каналов пользователей движка vas3k.club
+# Telegram links scraper from vas3k.club engine 
 
-Мне известно три работающих клуба на движке [vas3k.club](https://github.com/vas3k/vas3k.club):
+ Scraping vas3k.club engine users and fing all telegram links.
+ 
+ ## Description
+
+I know several clubs on [vas3k.club engine](https://github.com/vas3k/vas3k.club):
 - https://vas3k.club/
 - https://rationalanswer.club/
 - https://4aff.club
+- https://sorokin.club
 
-Ссылки на телеграм ищутся в краткой информации и интро. В этом парсере ссылки бывают двух видов:
-1. все, что начинается с @
-2. что содержит t.me/
+Scraper detect telegram links:
+1. start from `@`
+2. including `t.me/`
 
-После выполнения файла, данные пользователей будут сохранены в файл `users.json`. Для каждого пользователя сохраняется следующая информация:
-- имя
-- никнейм
-- телеграм идентификаторы: все, каналы, чаты и личные
+## Prepare
 
-Данные парсятся в один поток, чтобы не нагружать сервер. Сбор информации большого числа пользователей может занимать продолжительное время.
+1. Join the club
+2. Go to `https://your.club/user/{login}/edit/account/` and get login token
+3. Install virtual environment with [poetry](https://github.com/python-poetry/poetry) `poetry install`
 
-Данный скрипт написан в демонстрационных целях и распространяется как есть. Используйте его на свой страх и риск.
+## Usage
 
-## Настройка
+```
+poetry run python tg_scraper.py --url "http://vas3k.club" --token "youremail@mail.com|-sdfsdfdsffWABIOUOIUUZbt" file.json
+```
 
-1. Быть членом клуба, где хотите собрать телеграм каналы
-1. Скопировать файл  `.env.sample` в файл `.env`, например выполнив команду `cp .env.sample .env`
-1. Определить переменную `SITE_URL` в файле `.env` Например, для vas3k.club `SITE_URL="https://vas3k.club"`
-1. Определить переменную `TOKEN` в файле `.env`, это секретный код для входа. Eго можно взять в настройка вашего аккаунта по этой ссылке: https://vas3k.club/user/{ваш_логин}/edit/account/
+Where:
+- `http://vas3k.club` url of your club
+- `youremail@mail.com|-sdfsdfdsffWABIOUOIUUZbt` login token, you can find on page `https://vas3k.club/user/{login}/edit/account/`
+- `file.json` file for stored data
 
-## Запуск
+## Result
 
-Выполнить команду `docker compose up`
+`file.json` fake example:
+```
+[
+    {
+        "fullname": "Вастрик Бот",
+        "nickname": "vas3k_club",
+        "telegram": {
+            "chats": [],
+            "channels": [
+                {
+                    "id": "vas3k_club",
+                    "title": "Вастрик.Клуб",
+                    "description": "Канал Вастрик.Клуба (vas3k.club)",
+                    "subscribers": 6868
+                }
+            ],
+            "personal": [
+                "vas3k_club"
+            ]
+        }
+    },
+    {
+        "fullname": "RationalAnswer Bot",
+        "nickname": "RationalAnswer_club",
+        "telegram": {
+            "chats": [
+                "RationalAnswer_club_chat"
+            ],
+            "channels": [
+                {
+                    "id": "RationalAnswer_club",
+                    "title": "Клуб RationalAnswer",
+                    "description": "Здесь регулярно появляются ссылки на новые интересные посты и еженедельные рассылки Клуба RationalAnswer: https://RationalAnswer.club/Чат Клуба: https://t.me/RationalAnswer_club_chat",
+                    "subscribers": 664
+                }
+            ],
+            "personal": []
+        }
+    },
+]
+```
+
+## Disclaimer
+
+This repository/project is intended for Educational Purposes ONLY. Use this code for own risk.
