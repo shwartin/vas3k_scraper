@@ -1,4 +1,3 @@
-from calendar import c
 import re
 import click
 import requests
@@ -11,7 +10,6 @@ from pydantic import AnyHttpUrl, BaseModel
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
 }
-MAIN_TEXT = "Главная"
 WEB_TG_URL = "https://t.me/s"
 
 
@@ -49,8 +47,8 @@ def login(s: session, url: AnyHttpUrl, token: str) -> bool:
         logger.error(f"Problem with login. Status code is {main.status_code}")
         return False
     soup = BeautifulSoup(main.text, "html.parser")
-    if not soup.body.findAll(text=re.compile(MAIN_TEXT)):
-        logger.info("Failed to login")
+    if not soup.find("button", class_="footer-logout"):
+        logger.info("Failed to login, check url and login token")
         return False
     logger.info("I'm in")
     return True
@@ -205,16 +203,15 @@ def paginator(url: AnyHttpUrl, token: str, file: str) -> None:
     users = UserList()
     with requests.session() as s:
         s.headers = HEADERS
-        if login(s, url, token):
-            people = s.get(f"{url}/people/")
-            max_page = find_max_page(people.text)
-            with click.progressbar(
-                range(1, max_page + 1), label="Scraping users"
-            ) as bar:
-                for num_page in bar:
-                    page = s.get(f"{url}/people/?page={num_page}")
-                    page_users = get_users(s, url, page.text)
-                    users.__root__ += page_users.__root__
+        if not login(s, url, token):
+            return
+        people = s.get(f"{url}/people/")
+        max_page = find_max_page(people.text)
+        with click.progressbar(range(1, max_page + 1), label="Scraping users") as bar:
+            for num_page in bar:
+                page = s.get(f"{url}/people/?page={num_page}")
+                page_users = get_users(s, url, page.text)
+                users.__root__ += page_users.__root__
 
     file.write(users.json(ensure_ascii=False))
 
