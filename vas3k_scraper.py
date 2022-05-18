@@ -2,6 +2,7 @@ import re
 import click
 import requests
 from loguru import logger
+from typing import Optional
 from requests import session
 from bs4 import BeautifulSoup
 from pydantic import AnyHttpUrl, BaseModel
@@ -11,37 +12,37 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
 }
 WEB_TG_URL = "https://t.me/s"
+TG_URL = "https://t.me"
 
 
-class Channel(BaseModel):
+class TelegramChannel(BaseModel):
     id: str
+    url: AnyHttpUrl
     title: str
     description: str
     subscribers: int
 
 
 class Telegram(BaseModel):
-    chats: list[str] = []
-    channels: list[Channel] = []
-    personal: list[str] = []
+    chats: Optional[list[str]]
+    channels: Optional[list[TelegramChannel]]
+    personal: Optional[list[str]]
 
 
 class User(BaseModel):
     fullname: str
     nickname: str
-    telegram: Telegram = []
+    telegram: Optional[Telegram]
 
 
 class UserList(BaseModel):
-    # https://stackoverflow.com/a/58636711/12843933
     __root__: list[User] = []
 
 
-def login(s: session, url: AnyHttpUrl, token: str) -> bool:
-    """Login to club"""
+def token_login(s: session, url: AnyHttpUrl) -> bool:
+    token = click.prompt("Enter token", hide_input=True)
     payload = {"email_or_login": token}
-    s.post(f"{url}/auth/email/", data=payload)
-
+    resp = s.post(f"{url}/auth/email/", data=payload)
     main = s.get(url)
     if not main.status_code == 200:
         logger.error(f"Problem with login. Status code is {main.status_code}")
@@ -102,7 +103,7 @@ def convert_str_to_number(x: str) -> int:
     return int(total_stars)
 
 
-def get_channel_info(soup: BeautifulSoup) -> Channel:
+def get_channel_info(soup: BeautifulSoup) -> TelegramChannel:
     title, description, subscribers = "", "", "0"
     if soup_title := soup.find(class_="tgme_channel_info_header_title"):
         title = soup_title.get_text()
@@ -129,8 +130,9 @@ def separator(tgs: list) -> Telegram:
             if all(pattern in r.url for pattern in ["/s/", tg]):
                 title, description, subscribers = get_channel_info(soup)
                 channels.append(
-                    Channel(
+                    TelegramChannel(
                         id=tg,
+                        url=f"{TG_URL}/{tg}",
                         title=title,
                         description=description,
                         subscribers=subscribers,
@@ -192,18 +194,13 @@ def get_users(s: session, url: AnyHttpUrl, html: str) -> UserList:
 
 @click.command()
 @click.option("--url", help="Club url, for example 'https://vas3k.club'", required=True)
-@click.option(
-    "--token",
-    help="Login token, you can find it in your profile 'https://vask.club/user/{login}/edit/account/'",
-    required=True,
-)
 @click.argument("file", type=click.File("w"), required=True)
-def paginator(url: AnyHttpUrl, token: str, file: str) -> None:
+def paginator(url: AnyHttpUrl, file: str) -> None:
     """Scraping club users and fing all telegram links."""
     users = UserList()
     with requests.session() as s:
         s.headers = HEADERS
-        if not login(s, url, token):
+        if not token_login(s, url):
             return
         people = s.get(f"{url}/people/")
         max_page = find_max_page(people.text)

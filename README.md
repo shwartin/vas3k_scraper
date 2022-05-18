@@ -1,6 +1,6 @@
 # Telegram links scraper from vas3k.club engine 
 
- Scraping vas3k.club engine users and fing all telegram links.
+Scraping [vas3k.club engine](https://github.com/vas3k/vas3k.club) users and fing all telegram links.
  
  ## Description
 
@@ -23,12 +23,13 @@ Scraper detect telegram links:
 ## Usage
 
 ```
-poetry run python tg_scraper.py --url "http://vas3k.club" --token "youremail@mail.com|-sdfsdfdsffWABIOUOIUUZbt" file.json
+poetry run python vas3k_scraper.py --url "http://vas3k.club" file.json
 ```
+
+And then enter your token.
 
 Where:
 - `http://vas3k.club` url of your club
-- `youremail@mail.com|-sdfsdfdsffWABIOUOIUUZbt` login token, you can find on page `https://vas3k.club/user/{login}/edit/account/`
 - `file.json` file for stored data
 
 ## Result
